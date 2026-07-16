@@ -2,15 +2,22 @@ library(tidyverse)
 library(igraph)
 library(ggraph)
 
+
 df <- read.table(
   "互作.txt",
   header = TRUE,
   sep = "\t",
   stringsAsFactors = FALSE
 )
+
+# 统一 RNA-seq 列名（防止有点号）
+colnames(df)[colnames(df) == "RNA.seq"] <- "RNA_seq"
+
+
+
 edges <- bind_rows(
   
-  # GWAS SNP → Gene
+  # GWAS → Gene
   df %>%
     filter(!is.na(GWAS)) %>%
     transmute(
@@ -19,7 +26,7 @@ edges <- bind_rows(
       source = "GWAS"
     ),
   
-  # TWAS_SMR SNP → Gene
+  # TWAS_SMR → Gene（NA 不画）
   df %>%
     filter(!is.na(TWAS_SMR)) %>%
     transmute(
@@ -28,6 +35,9 @@ edges <- bind_rows(
       source = "TWAS_SMR"
     )
 )
+
+
+
 nodes <- tibble(
   name = unique(c(edges$from, edges$to))
 ) %>%
@@ -40,28 +50,34 @@ nodes <- tibble(
       TRUE ~ "Gene"
     ),
     
-    # RNA-seq 调控方向（来自 Group 列）
-    regulation = df$Group[match(name, df$Gene)],
+    # RNA-seq 信息（只对 Gene 有）
+    RNA_seq = df$RNA_seq[match(name, df$Gene)],
     
-    # Gene 节点填充色分组
+    # Gene 填充色分组：调控方向
     gene_fill = case_when(
-      regulation == "Up" ~ "Up",
-      regulation == "Down" ~ "Down",
+      RNA_seq == "Up" ~ "Up",
+      RNA_seq == "Down" ~ "Down",
       TRUE ~ "No_Significant"
     ),
     
     # 标签规则
     label = case_when(
       node_class %in% c("GWAS", "TWAS_SMR") ~ name,
-      regulation %in% c("Up", "Down") ~ name,
+      RNA_seq %in% c("Up", "Down") ~ name,
       TRUE ~ NA_character_
     )
   )
+
+
+
 g <- graph_from_data_frame(
   d = edges,
   vertices = nodes,
   directed = FALSE
 )
+
+
+
 ggraph(g, layout = "stress") +
   
   # 边：GWAS 实线，TWAS_SMR 虚线
@@ -92,7 +108,7 @@ ggraph(g, layout = "stress") +
     stroke = 0.5
   ) +
   
-  # 标签（黑色，偏大）
+  # 标签（全部黑色，字体偏大）
   geom_node_text(
     aes(label = label),
     repel = TRUE,
@@ -109,7 +125,7 @@ ggraph(g, layout = "stress") +
     )
   ) +
   
-  # Gene 调控方向颜色
+  # Gene 填充色（调控方向）
   scale_fill_manual(
     values = c(
       "Up" = "#F4A582",
@@ -118,6 +134,7 @@ ggraph(g, layout = "stress") +
     )
   ) +
   
+  # 线型
   scale_linetype_manual(
     values = c(
       "GWAS" = "solid",
@@ -131,9 +148,11 @@ ggraph(g, layout = "stress") +
     text = element_text(family = "Arial"),
     plot.margin = margin(10, 10, 10, 10)
   )
+
+
 ggsave(
-  "GWAS_TWAS_RNAseq_network_new.pdf",
-  width = 7,
+  "GWAS_TWAS_RNAseq_network.pdf",
+  width = 18,
   height = 6,
   device = cairo_pdf
 )
